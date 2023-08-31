@@ -20,6 +20,10 @@ func main() {
 
 	godotenv.Load(".env")
 
+    if os.Getenv("RAINDROP_TOKEN") == "" {
+        panic("RAINDROP_TOKEN env variable is empty!")
+    }
+
 	srv := http.Server{
 		Addr:    ":8080",
 		Handler: nil,
@@ -40,21 +44,17 @@ func main() {
 
 		fmt.Fprintf(os.Stderr, "Received %q\n", data.Url)
 
-		validCh := make(chan bool)
+        valid := checkRaindropExists(data.Url)
 
-		go checkRaindropExists(validCh, data.Url)
-
-		result := make(chan string)
-
-		valid := <-validCh
+        var result string
 
 		if valid {
-			go createRaindrop(result, &data)
+            result = createRaindrop(&data)
 		} else {
-			go func() { result <- "Bookmark already in Raindrop.io bookmarks" }()
+			result = "Bookmark already in Raindrop.io bookmarks"
 		}
 
-		fmt.Fprintf(os.Stderr, "%v\n", <-result)
+		fmt.Fprintf(os.Stderr, "%v\n", result)
 	}
 
 }
@@ -74,8 +74,6 @@ func handle(w http.ResponseWriter, req *http.Request, ch chan []byte) {
 }
 
 func parseOmnivoreResponse(omniBody []byte) NewRaindropBookmark {
-
-	fmt.Println(string(omniBody[:]))
 
 	// init anonymous struct to unmarshal json body
 	data := struct {
@@ -97,7 +95,7 @@ func parseOmnivoreResponse(omniBody []byte) NewRaindropBookmark {
 	}
 }
 
-func createRaindrop(result chan string, bookmark *NewRaindropBookmark) {
+func createRaindrop(bookmark *NewRaindropBookmark) string {
 
 	endpoint := "https://api.raindrop.io/rest/v1/raindrop"
 
@@ -122,25 +120,29 @@ func createRaindrop(result chan string, bookmark *NewRaindropBookmark) {
 	if err != nil {
 		panic(err)
 	} else if res.StatusCode != http.StatusOK {
-		result <- fmt.Sprintf("Unexpected response from Raindrop.io api: %q", res.Status)
+		return fmt.Sprintf("Unexpected response from Raindrop.io api: %q", res.Status)
 	}
 
-	result <- "Successfully created Raindrop.io bookmark."
+	return "Successfully created Raindrop.io bookmark."
 }
 
-func checkRaindropExists(valid chan bool, targetUrl string) {
+func checkRaindropExists(targetUrl string) bool {
 
 	endpoint := "https://api.raindrop.io/rest/v1/import/url/exists"
 
-	body := fmt.Sprintf(`{
-		"urls": [
-			"%v"
-		]
-	}`, targetUrl)
+    body := struct {
+        Urls []string `json:"urls"`
+    }{Urls: []string{targetUrl}}
+
+    bodyString, err := json.Marshal(body)
+
+    if err != nil {
+        panic(err)
+    }
 
 	token := os.Getenv("RAINDROP_TOKEN")
 
-	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader([]byte(body)))
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(bodyString))
 	if err != nil {
 		panic(err)
 	}
@@ -148,33 +150,27 @@ func checkRaindropExists(valid chan bool, targetUrl string) {
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %v", token))
 	req.Header.Add("Content-Type", "application/json")
 
-	responseChannel := make(chan []byte)
+	resp, err := http.DefaultClient.Do(req)
 
-	go func() {
-		resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		panic(err)
+	} else if resp.StatusCode >= 400 {
+        panic(resp.Status)
+    }
 
-		if err != nil {
-			panic(err)
-		}
+	rawResponse, err := io.ReadAll(resp.Body)
 
-		resBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		panic(err)
+	}
 
-		if err != nil {
-			panic(err)
-		}
+	responseData := struct{ Result bool }{}
 
-		responseChannel <- resBody
-	}()
-
-	responseBodyBytes := <-responseChannel
-
-	responseBody := struct{ Result bool }{}
-
-	if err := json.Unmarshal(responseBodyBytes, &responseBody); err != nil {
+	if err := json.Unmarshal(rawResponse, &responseData); err != nil {
 		panic(err)
 	}
 
 	//raindrop api returns false if there *isn't* a duplicate, so we negate this
-	valid <- !responseBody.Result
+	return !responseData.Result
 
 }
