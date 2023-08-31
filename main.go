@@ -11,40 +11,56 @@ import (
 	"github.com/joho/godotenv"
 )
 
-var output chan string
-var omni_response chan []byte
-
-func main() {
-	fmt.Printf("Hello, world!\n")
-	srv := make_server()
-
-	godotenv.Load(".env")
-
-	output = make(chan string)
-	omni_response = make(chan []byte)
-
-	go func() { srv.ListenAndServe() }()
-
-	go parse_omnivore_response(<-omni_response)
-
-	srv.Close()
-
-	fmt.Printf("%v\n", <-output)
-
+type NewRaindropBookmark struct {
+	Url   string
+	Title string
 }
 
-func make_server() *http.Server {
-	server := http.Server{
+func main() {
+
+	srv := http.Server{
 		Addr:    ":8080",
 		Handler: nil,
 	}
 
-	http.HandleFunc("/", handle)
+	omni_response := make(chan []byte)
 
-	return &server
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { handle(w, r, omni_response) })
+
+	godotenv.Load(".env")
+
+	//TODO add graceful shutdown logic
+	go func() { srv.ListenAndServe() }()
+
+	fmt.Printf("Server started successfully\nWaiting for requests...")
+
+	for {
+
+		data := parse_omnivore_response(<-omni_response)
+
+		fmt.Fprintf(os.Stderr, "Received %q\n", data.Url)
+
+		valid_ch := make(chan bool)
+
+		go check_raindrop_exists(valid_ch, data.Url)
+
+		result := make(chan string)
+
+		valid := <-valid_ch
+
+		if valid {
+			go create_raindrop(result, &data)
+		} else {
+			go func() { result <- "Bookmark already in Raindrop.io bookmarks" }()
+		}
+
+		fmt.Fprintf(os.Stderr, "%v\n", <-result)
+	}
+
 }
 
-func handle(w http.ResponseWriter, req *http.Request) {
+// handles the request and sends the request body through ch channel
+func handle(w http.ResponseWriter, req *http.Request, ch chan []byte) {
 
 	bytes, err := io.ReadAll(req.Body)
 
@@ -52,43 +68,64 @@ func handle(w http.ResponseWriter, req *http.Request) {
 		panic(err)
 	}
 
-	omni_response <- bytes
+	ch <- bytes
 
 	w.WriteHeader(http.StatusOK)
-	w.Header().Add("content-type", "text/plain")
-	w.Write([]byte("Good job!"))
 }
 
-func parse_omnivore_response(omni_body []byte) {
-
-	type OmniBody struct {
-		Page struct {
-			Url string
-		}
-	}
+func parse_omnivore_response(omni_body []byte) NewRaindropBookmark {
 
 	fmt.Println(string(omni_body[:]))
-	data := OmniBody{}
+
+	// init anonymous struct to unmarshal json body
+	data := struct {
+		Page struct {
+			Url   string
+			Title string
+		}
+	}{}
+
 	err := json.Unmarshal(omni_body, &data)
 
 	if err != nil {
 		panic(err)
 	}
 
-	original_url := data.Page.Url
-
-	valid_ch := make(chan bool)
-	check_raindrop_exists(valid_ch, original_url)
-
-	raindrop_exists := <-valid_ch
-
-	if !raindrop_exists {
-		//create_raindrop()
+	return NewRaindropBookmark{
+		Url:   data.Page.Url,
+		Title: data.Page.Title,
 	}
 }
 
-func create_raindrop(result chan string, target_url string) {
+func create_raindrop(result chan string, bookmark *NewRaindropBookmark) {
 
+	endpoint := "https://api.raindrop.io/rest/v1/raindrop"
+
+	data := fmt.Sprintf(`
+	{
+		"link": "%v",
+		"title": "%v",
+		"pleaseParse": {}
+	}`, bookmark.Url, bookmark.Title)
+
+	req, err := http.NewRequest("POST", endpoint, bytes.NewReader([]byte(data)))
+
+	if err != nil {
+		panic(err)
+	}
+
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %v", os.Getenv("RAINDROP_TOKEN")))
+	req.Header.Add("Content-Type", "application/json")
+
+	res, err := http.DefaultClient.Do(req)
+
+	if err != nil {
+		panic(err)
+	} else if res.StatusCode != http.StatusOK {
+		result <- fmt.Sprintf("Unexpected response from Raindrop.io api: %q", res.Status)
+	}
+
+	result <- "Successfully created Raindrop.io bookmark."
 }
 
 func check_raindrop_exists(valid chan bool, target_url string) {
@@ -132,12 +169,13 @@ func check_raindrop_exists(valid chan bool, target_url string) {
 	}()
 
 	response_body_bytes := <-response_channel
-	response_body := struct{ result bool }{}
+
+	response_body := struct{ Result bool }{}
 
 	if err := json.Unmarshal(response_body_bytes, &response_body); err != nil {
 		panic(err)
 	}
 
-	valid <- response_body.result
+	valid <- !response_body.Result
 
 }
