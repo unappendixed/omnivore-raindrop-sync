@@ -9,7 +9,7 @@ Automatically sync Omnivore pages to Raindrop.io
 5. Fill in the OMNIVORE_ID environment variable with your user id.
 
 ## Building (Docker)
-2. Run `docker build .` in the project directory.
+1. Run `docker build .` in the project directory.
 
 ## Building (without Docker)
 1. Install Go toolchain
