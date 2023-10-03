@@ -19,10 +19,10 @@ type NewRaindropBookmark struct {
 }
 
 func stderrHelper(template string, v ...any) {
-    time := time.Now().Local()
-    timeS := fmt.Sprintf("%v/%v/%v %v:%v:%v", time.Year(), int(time.Month()), time.Day(), time.Hour(), time.Minute(), time.Second())
-    s := fmt.Sprintf(template, v...)
-    fmt.Fprintf(os.Stderr, "%v\t%v", timeS, s)
+	time := time.Now().Local()
+	timeS := fmt.Sprintf("%v/%v/%v %v:%v:%v", time.Year(), int(time.Month()), time.Day(), time.Hour(), time.Minute(), time.Second())
+	s := fmt.Sprintf(template, v...)
+	fmt.Fprintf(os.Stderr, "%v\t%v", timeS, s)
 }
 
 func main() {
@@ -33,9 +33,9 @@ func main() {
 		panic("RAINDROP_TOKEN env variable is empty!")
 	}
 
-    if os.Getenv("OMNIVORE_USERID") == "" {
-        panic("OMNIVORE_USERID env variable is empty!")
-    }
+	if os.Getenv("OMNIVORE_USERID") == "" {
+		panic("OMNIVORE_USERID env variable is empty!")
+	}
 
 	srv := http.Server{
 		Addr:    ":8080",
@@ -55,10 +55,10 @@ func main() {
 
 		data, err := parseOmnivoreResponse(<-omniResponse)
 
-        if err != nil {
-            stderrHelper("Parse Error: %v\n", err.Error())
-            continue
-        }
+		if err != nil {
+			stderrHelper("Parse Error: %v\n", err.Error())
+			continue
+		}
 
 		if data.UserId != os.Getenv("OMNIVORE_USERID") {
 			stderrHelper("Rejecting request from invalid userId %q\n", data.UserId)
@@ -69,22 +69,22 @@ func main() {
 
 		valid, err := checkRaindropExists(data.Url)
 
-        if err != nil {
-            stderrHelper("Raindrop Check Response: %v\n", err.Error())
-            continue
-        }
+		if err != nil {
+			stderrHelper("Raindrop Check Response: %v\n", err.Error())
+			continue
+		}
 
 		if valid {
-            err := createRaindrop(&data)
-            if err != nil {
-                stderrHelper("Create Raindrop Response: %v\n", err.Error())
-                continue
-            }
+			err := createRaindrop(&data)
+			if err != nil {
+				stderrHelper("Create Raindrop Response: %v\n", err.Error())
+				continue
+			}
 		} else {
 			stderrHelper("Bookmark already in Raindrop.io bookmarks\n")
-            continue
+			continue
 		}
-        stderrHelper("Successfully created Raindrop.io bookmark\n")
+		stderrHelper("Successfully created Raindrop.io bookmark\n")
 	}
 
 }
@@ -118,14 +118,14 @@ func parseOmnivoreResponse(omniBody []byte) (NewRaindropBookmark, error) {
 	err := json.Unmarshal(omniBody, &data)
 
 	if err != nil {
-        return NewRaindropBookmark{}, err
+		return NewRaindropBookmark{}, err
 	}
 
 	return NewRaindropBookmark{
-        Url: data.Page.Url, 
-        Title: data.Page.Title, 
-        UserId: data.UserId,
-    }, nil
+		Url:    data.Page.Url,
+		Title:  data.Page.Title,
+		UserId: data.UserId,
+	}, nil
 }
 
 func createRaindrop(bookmark *NewRaindropBookmark) error {
@@ -140,6 +140,7 @@ func createRaindrop(bookmark *NewRaindropBookmark) error {
 	}`, bookmark.Url, bookmark.Title)
 
 	req, err := http.NewRequest("POST", endpoint, bytes.NewReader([]byte(body)))
+	defer req.Body.Close()
 
 	if err != nil {
 		return err
@@ -151,7 +152,7 @@ func createRaindrop(bookmark *NewRaindropBookmark) error {
 	res, err := http.DefaultClient.Do(req)
 
 	if err != nil {
-        return err
+		return err
 	} else if res.StatusCode != http.StatusOK {
 		return fmt.Errorf("Unexpected response from Raindrop.io api: %q", res.Status)
 	}
@@ -176,8 +177,9 @@ func checkRaindropExists(targetUrl string) (bool, error) {
 	token := os.Getenv("RAINDROP_TOKEN")
 
 	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(bodyString))
+	defer req.Body.Close()
 	if err != nil {
-        return false, err
+		return false, err
 	}
 
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %v", token))
@@ -188,7 +190,7 @@ func checkRaindropExists(targetUrl string) (bool, error) {
 	if err != nil {
 		return false, err
 	} else if resp.StatusCode >= 400 {
-        return false, fmt.Errorf(resp.Status)
+		return false, fmt.Errorf(resp.Status)
 	}
 
 	rawResponse, err := io.ReadAll(resp.Body)
@@ -200,7 +202,7 @@ func checkRaindropExists(targetUrl string) (bool, error) {
 	responseData := struct{ Result bool }{}
 
 	if err := json.Unmarshal(rawResponse, &responseData); err != nil {
-        return false, err
+		return false, err
 	}
 
 	//raindrop api returns false if there *isn't* a duplicate, so we negate this
