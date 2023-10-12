@@ -110,7 +110,7 @@ func parseOmnivoreResponse(omniBody []byte) (NewRaindropBookmark, error) {
 	data := struct {
 		UserId string `json:"userID"`
 		Page   struct {
-			Url   string
+            Url   string `json:"originalUrl"`
 			Title string
 		}
 	}{}
