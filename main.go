@@ -20,7 +20,13 @@ type NewRaindropBookmark struct {
 
 func stderrHelper(template string, v ...any) {
 	time := time.Now().Local()
-	timeS := fmt.Sprintf("%v/%v/%v %v:%v:%v", time.Year(), int(time.Month()), time.Day(), time.Hour(), time.Minute(), time.Second())
+	timeS := fmt.Sprintf(
+		"%v/%v/%v %v:%v:%v",
+		time.Year(),
+		int(time.Month()),
+		time.Day(), time.Hour(),
+		time.Minute(),
+		time.Second())
 	s := fmt.Sprintf(template, v...)
 	fmt.Fprintf(os.Stderr, "%v\t%v", timeS, s)
 }
@@ -46,7 +52,7 @@ func main() {
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { handle(w, r, omniResponse) })
 
-	//TODO add graceful shutdown logic
+    //TODO: add graceful shutdown logic
 	go func() { srv.ListenAndServe() }()
 
 	fmt.Printf("Server started successfully\nWaiting for requests...\n")
@@ -110,7 +116,7 @@ func parseOmnivoreResponse(omniBody []byte) (NewRaindropBookmark, error) {
 	data := struct {
 		UserId string `json:"userID"`
 		Page   struct {
-            Url   string `json:"originalUrl"`
+			Url   string `json:"originalUrl"`
 			Title string
 		}
 	}{}
