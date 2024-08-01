@@ -40,7 +40,7 @@ func main() {
 	}
 
 	if os.Getenv("OMNIVORE_USERID") == "" {
-		panic("OMNIVORE_USERID env variable is empty!")
+        stderrHelper("Warning: OMNIVORE_USERID variable is empty! All requests will be rejected.\n")
 	}
 
 	srv := http.Server{
