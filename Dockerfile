@@ -14,6 +14,4 @@ FROM alpine
 
 WORKDIR /usr/src/omnivore-raindrop-sync
 
-COPY --from=0 /usr/src/omnivore-raindrop-sync/omnivore-raindrop-sync /usr/src/omnivore-raindrop-sync/.env ./
-
 CMD ["./omnivore-raindrop-sync"]

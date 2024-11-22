@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"os"
 	"time"
-
-	"github.com/joho/godotenv"
 )
 
 type NewRaindropBookmark struct {
@@ -32,8 +30,6 @@ func stderrHelper(template string, v ...any) {
 }
 
 func main() {
-
-	godotenv.Load(".env")
 
 	if os.Getenv("RAINDROP_TOKEN") == "" {
 		panic("RAINDROP_TOKEN env variable is empty!")
